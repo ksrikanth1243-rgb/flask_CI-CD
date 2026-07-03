@@ -303,7 +303,7 @@ jobs:
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: 'GitHub Actions - Build Failed: ${{ github.repository }}'
-        to: ${{ secrets.ksrikanth1243@gmail.com }}
+        to: ksrikanth1243@gmail.com
         from: 'GitHub Actions <noreply@github.com>'
         body: |
           Build Status: FAILED
@@ -331,7 +331,7 @@ jobs:
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: 'GitHub Actions - Build Successful: ${{ github.repository }}'
-        to: ${{ secrets.ksrikanth1243@gmail.com }}
+        to: ksrikanth1243@gmail.com
         from: 'GitHub Actions <noreply@github.com>'
         body: |
           Build Status: SUCCESS
