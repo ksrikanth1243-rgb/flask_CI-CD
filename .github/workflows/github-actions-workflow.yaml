@@ -1,0 +1,345 @@
+name: Flask CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, staging ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, staging ]
+
+env:
+  PYTHON_VERSION: '3.9'
+  APP_NAME: 'flask_practice'
+
+jobs:
+  # Job 1: Install Dependencies and Run Tests
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Display Python version
+      run: python -c "import sys; print(sys.version)"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-cov flake8 pylint
+    
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 app/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 app/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+    
+    - name: Run tests with pytest
+      run: |
+        pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+    
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-report-${{ matrix.python-version }}
+        path: htmlcov/
+    
+    - name: Archive test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          .coverage
+          coverage.xml
+
+  # Job 2: Security scanning
+  security-scan:
+    name: Security & Quality Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install security scanning tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+    
+    - name: Run Bandit security scan
+      run: bandit -r app/ -f json -o bandit-report.json || true
+    
+    - name: Check dependencies for vulnerabilities
+      run: safety check --json || true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+
+  # Job 3: Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [build-and-test, security-scan]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+    
+    environment:
+      name: staging
+      url: https://staging.example.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Run pre-deployment tests
+      run: |
+        pip install pytest pytest-cov
+        pytest tests/ -v
+    
+    - name: Create deployment artifact
+      run: |
+        tar -czf ${{ env.APP_NAME }}-staging-${{ github.run_number }}.tar.gz \
+          --exclude=.git \
+          --exclude=.github \
+          --exclude=__pycache__ \
+          --exclude=.pytest_cache \
+          --exclude=venv \
+          .
+        ls -lh ${{ env.APP_NAME }}-staging-*.tar.gz
+    
+    - name: Deploy to Staging Environment
+      env:
+        STAGING_DEPLOY_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
+        STAGING_HOST: ${{ secrets.STAGING_HOST }}
+        STAGING_USER: ${{ secrets.STAGING_USER }}
+        STAGING_PATH: ${{ secrets.STAGING_PATH }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$STAGING_DEPLOY_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan -H $STAGING_HOST >> ~/.ssh/known_hosts
+        
+        # Deploy the artifact
+        scp -i ~/.ssh/deploy_key ${{ env.APP_NAME }}-staging-${{ github.run_number }}.tar.gz \
+          $STAGING_USER@$STAGING_HOST:$STAGING_PATH/
+        
+        # Extract and restart application
+        ssh -i ~/.ssh/deploy_key $STAGING_USER@$STAGING_HOST << 'EOF'
+          cd ${{ secrets.STAGING_PATH }}
+          tar -xzf ${{ env.APP_NAME }}-staging-${{ github.run_number }}.tar.gz
+          # Add deployment commands here (e.g., restart service, run migrations)
+          echo "Deployment to staging completed"
+        EOF
+        
+        rm ~/.ssh/deploy_key
+    
+    - name: Notify Deployment Success
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: 'Deployment to Staging: SUCCESS'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+      continue-on-error: true
+
+  # Job 4: Deploy to Production (on release tags)
+  deploy-production:
+    name: Deploy to Production
+    needs: [build-and-test, security-scan]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    
+    environment:
+      name: production
+      url: https://example.com
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Run final production tests
+      run: |
+        pip install pytest pytest-cov
+        pytest tests/ -v --cov=.
+    
+    - name: Create production artifact
+      run: |
+        tar -czf ${{ env.APP_NAME }}-prod-${{ github.ref_name }}.tar.gz \
+          --exclude=.git \
+          --exclude=.github \
+          --exclude=__pycache__ \
+          --exclude=.pytest_cache \
+          --exclude=venv \
+          .
+        ls -lh ${{ env.APP_NAME }}-prod-*.tar.gz
+    
+    - name: Deploy to Production Environment
+      env:
+        PROD_DEPLOY_KEY: ${{ secrets.PROD_DEPLOY_KEY }}
+        PROD_HOST: ${{ secrets.PROD_HOST }}
+        PROD_USER: ${{ secrets.PROD_USER }}
+        PROD_PATH: ${{ secrets.PROD_PATH }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$PROD_DEPLOY_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan -H $PROD_HOST >> ~/.ssh/known_hosts
+        
+        # Deploy the artifact
+        scp -i ~/.ssh/deploy_key ${{ env.APP_NAME }}-prod-${{ github.ref_name }}.tar.gz \
+          $PROD_USER@$PROD_HOST:$PROD_PATH/
+        
+        # Extract and restart application
+        ssh -i ~/.ssh/deploy_key $PROD_USER@$PROD_HOST << 'EOF'
+          cd ${{ secrets.PROD_PATH }}
+          # Create backup
+          tar -czf backup-$(date +%Y%m%d-%H%M%S).tar.gz app/
+          tar -xzf ${{ env.APP_NAME }}-prod-${{ github.ref_name }}.tar.gz
+          # Add deployment commands here (e.g., restart service, run migrations, health checks)
+          echo "Deployment to production completed"
+        EOF
+        
+        rm ~/.ssh/deploy_key
+    
+    - name: Notify Deployment Success
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: 'Production Deployment: SUCCESS - Release ${{ github.ref_name }}'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+      continue-on-error: true
+    
+    - name: Create Release Notes
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Release ${{ github.ref_name }}
+        body: |
+          ## Deployment Information
+          - **Version**: ${{ github.ref_name }}
+          - **Commit**: ${{ github.sha }}
+          - **Author**: ${{ github.actor }}
+          - **Timestamp**: ${{ github.event.head_commit.timestamp }}
+          
+          ## Changes
+          See commit history for detailed changes.
+        draft: false
+        prerelease: false
+
+  # Job 5: Notifications
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [build-and-test, security-scan]
+    
+    steps:
+    - name: Send email notification on failure
+      if: failure()
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: ${{ secrets.EMAIL_SERVER }}
+        server_port: ${{ secrets.EMAIL_PORT }}
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: 'GitHub Actions - Build Failed: ${{ github.repository }}'
+        to: ${{ secrets.NOTIFICATION_EMAIL }}
+        from: 'GitHub Actions <noreply@github.com>'
+        body: |
+          Build Status: FAILED
+          
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref }}
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+          
+          Build Details:
+          - Workflow: ${{ github.workflow }}
+          - Run Number: ${{ github.run_number }}
+          - Run ID: ${{ github.run_id }}
+          
+          View the full build log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          
+          Please review and fix the failing tests or code quality issues.
+    
+    - name: Send email notification on success
+      if: success()
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: ${{ secrets.EMAIL_SERVER }}
+        server_port: ${{ secrets.EMAIL_PORT }}
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: 'GitHub Actions - Build Successful: ${{ github.repository }}'
+        to: ${{ secrets.NOTIFICATION_EMAIL }}
+        from: 'GitHub Actions <noreply@github.com>'
+        body: |
+          Build Status: SUCCESS
+          
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref }}
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+          
+          All tests passed successfully!
+          View the build: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
