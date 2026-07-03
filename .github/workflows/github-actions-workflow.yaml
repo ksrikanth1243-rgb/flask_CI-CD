@@ -55,7 +55,7 @@ jobs:
         pytest tests/ -v --cov=. --cov-report=xml --cov-report=html
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
         flags: unittests
@@ -63,14 +63,14 @@ jobs:
         fail_ci_if_error: false
     
     - name: Archive code coverage results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: code-coverage-report-${{ matrix.python-version }}
         path: htmlcov/
     
     - name: Archive test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.python-version }}
         path: |
@@ -84,7 +84,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -104,7 +104,7 @@ jobs:
       run: safety check --json || true
     
     - name: Upload security reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-reports
@@ -124,7 +124,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -303,7 +303,7 @@ jobs:
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: 'GitHub Actions - Build Failed: ${{ github.repository }}'
-        to: ${{ secrets.NOTIFICATION_EMAIL }}
+        to: ${{ secrets.ksrikanth1243@gmail.com }}
         from: 'GitHub Actions <noreply@github.com>'
         body: |
           Build Status: FAILED
@@ -331,7 +331,7 @@ jobs:
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
         subject: 'GitHub Actions - Build Successful: ${{ github.repository }}'
-        to: ${{ secrets.NOTIFICATION_EMAIL }}
+        to: ${{ secrets.ksrikanth1243@gmail.com }}
         from: 'GitHub Actions <noreply@github.com>'
         body: |
           Build Status: SUCCESS
