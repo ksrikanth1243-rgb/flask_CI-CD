@@ -67,16 +67,25 @@ pipeline {
                 }
             }
             post {
-                always {
-                    junit 'test-results.xml' | true
-                    publishHTML([
-                        reportDir: 'htmlcov',
-                        reportFiles: 'index.html',
-                        reportName: 'Coverage Report'
-                    ]) | true
-                }
+    always {
+        script {
+            if (fileExists('test-results.xml')) {
+                junit 'test-results.xml'
+            }
+
+            if (fileExists('htmlcov/index.html')) {
+                publishHTML(target: [
+                    allowMissing: true,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'htmlcov',
+                    reportFiles: 'index.html',
+                    reportName: 'Coverage Report'
+                ])
             }
         }
+    }
+}
         
         stage('Code Quality') {
             steps {
