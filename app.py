@@ -27,7 +27,9 @@ else:
 def index():
     students = mongo.db.students.find()
     return render_template('index.html', students=students)
-
+@app.route("/jenkins-test")
+def jenkins_test():
+    return "Hello from Jenkins CI/CD!"
 # Add student
 @app.route('/add', methods=['GET', 'POST'])
 def add_student():
