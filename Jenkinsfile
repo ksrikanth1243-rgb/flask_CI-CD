@@ -66,11 +66,12 @@ pipeline {
                     '''
                 }
             }
-            post {
-    always {
-        script {
-            if (fileExists('test-results.xml')) {
-                junit 'test-results.xml'
+            
+	post {
+              always {
+                  script {
+                    if (fileExists('test-results.xml')) {
+                         junit 'test-results.xml'
             }
 
             if (fileExists('htmlcov/index.html')) {
