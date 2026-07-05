@@ -9,7 +9,7 @@ pipeline {
             steps {
 
                 git branch: 'main',
-                url: 'https://github.com/username/flask-app.git'
+                url: 'https://github.com/ksrikanth1243-rgb/flask_CI-CD.git'
 
             }
 
