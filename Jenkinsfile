@@ -1,106 +1,74 @@
 pipeline {
+
     agent any
-
-    options {
-        timestamps()
-        timeout(time: 20, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-    }
-
-    environment {
-        VENV = "${WORKSPACE}/venv"
-        APP_NAME = "flask_practice"
-    }
 
     stages {
 
         stage('Checkout') {
+
             steps {
-                echo "Checking out source code..."
-                checkout scm
+
+                git branch: 'main',
+                url: 'https://github.com/username/flask-app.git'
+
             }
+
         }
 
-        stage('Setup Python') {
+        stage('Build') {
+
             steps {
-                sh '''
-                    python3 -m venv ${VENV}
-                    . ${VENV}/bin/activate
-                    python --version
-                    pip install --upgrade pip
-                '''
+
+                sh 'python3 -m venv venv'
+                sh '. venv/bin/activate && pip install -r requirements.txt'
+
             }
+
         }
 
-        stage('Install Dependencies') {
-            steps {
-                sh '''
-                    . ${VENV}/bin/activate
+        stage('Test') {
 
-                    if [ -f requirements.txt ]; then
-                        pip install -r requirements.txt
-                    fi
-                '''
+            steps {
+
+                sh '. venv/bin/activate && pytest'
+
             }
+
         }
 
-        stage('Verify Application') {
+        stage('Deploy') {
+
             steps {
-                sh '''
-                    . ${VENV}/bin/activate
 
-                    echo "Checking Python syntax..."
-
-                    python -m py_compile app.py
-
-                    echo "Syntax verification completed."
-                '''
+                echo 'Deploying to staging...'
             }
+
         }
 
-        stage('Run Tests') {
-            steps {
-                sh '''
-                    . ${VENV}/bin/activate
-
-                    pip install pytest
-
-                    if [ -d tests ]; then
-                        pytest -v
-                    else
-                        echo "No tests directory found. Skipping tests."
-                    fi
-                '''
-            }
-        }
-
-        stage('Package Application') {
-            steps {
-                sh '''
-                    tar --exclude=venv \
-                        --exclude=.git \
-                        --exclude=__pycache__ \
-                        -czf ${APP_NAME}-${BUILD_NUMBER}.tar.gz .
-
-                    ls -lh ${APP_NAME}-${BUILD_NUMBER}.tar.gz
-                '''
-            }
-        }
     }
 
     post {
 
         success {
-            echo "Build completed successfully."
-            archiveArtifacts artifacts: '*.tar.gz', fingerprint: true
+
+            emailext(
+                subject: 'Build Successful',
+                body: 'Pipeline completed successfully.',
+                to: 'team@example.com'
+            )
+
         }
 
         failure {
-            echo "Build failed. Please check the console output."
+
+            emailext(
+                subject: 'Build Failed',
+                body: 'Pipeline execution failed.',
+                to: 'team@example.com'
+            )
+
         }
 
-        always {
-            echo "Pipeline execution finished."
-        }
     }
+
 }
