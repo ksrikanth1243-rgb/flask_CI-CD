@@ -30,11 +30,23 @@ pipeline {
 
             steps {
 
-                sh '. venv/bin/activate && pytest'
+                sh '. venv/bin/activate && pytest --junitxml=test-results.xml'
 
             }
 
         }
+
+       stage('Code Quality & Security') {
+            
+        steps {
+          sh '''
+                 . venv/bin/activate
+                   black --check .
+                   bandit -r app.py
+              '''
+         }
+       }
+
 
         stage('Deploy') {
 
